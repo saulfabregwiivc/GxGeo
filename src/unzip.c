@@ -905,21 +905,37 @@ unzFile file;
 	return UNZ_PARAMERROR;
     s = (unz_s *) file;
     if (!s->current_file_ok)
-	return UNZ_PARAMERROR;
+		{
+			printf("!s->current_file_ok\n");
+			sleep(3);
+			return UNZ_PARAMERROR;
+		}
 
     if (s->pfile_in_zip_read != NULL)
-	unzCloseCurrentFile(file);
+		{
+		//printf("s->pfile_in_zip_read != NULL\n");
+		//sleep(3);
+			unzCloseCurrentFile(file);
+		}
 
     if (unzlocal_CheckCurrentFileCoherencyHeader(s, &iSizeVar,
 						 &offset_local_extrafield,
 						 &size_local_extrafield) !=
 	UNZ_OK)
-	return UNZ_BADZIPFILE;
+	{
+	printf("unzlocal_CheckCurrentFileCoherency\n");
+	sleep(3);
+		return UNZ_BADZIPFILE;
+	}
 
     pfile_in_zip_read_info = (file_in_zip_read_info_s *)
 	ALLOC(sizeof(file_in_zip_read_info_s));
     if (pfile_in_zip_read_info == NULL)
+	{
+	printf("pfile_in_zip_read_info == NULL\n");
+	sleep(3);
 	return UNZ_INTERNALERROR;
+	}
 
     pfile_in_zip_read_info->read_buffer = (char *) ALLOC(UNZ_BUFSIZE);
     pfile_in_zip_read_info->offset_local_extrafield =
@@ -929,6 +945,8 @@ unzFile file;
 
     if (pfile_in_zip_read_info->read_buffer == NULL) {
 	TRYFREE(pfile_in_zip_read_info);
+	printf("read_buffer == NULL\n");
+	sleep(3);
 	return UNZ_INTERNALERROR;
     }
 
@@ -954,6 +972,9 @@ unzFile file;
 	pfile_in_zip_read_info->stream.zfree = (free_func) 0;
 	pfile_in_zip_read_info->stream.opaque = (voidpf) 0;
 
+//printf("Start inflateInit2...\n");
+//sleep(3);
+
 	err = inflateInit2(&pfile_in_zip_read_info->stream, -MAX_WBITS);
 	if (err == Z_OK)
 	    pfile_in_zip_read_info->stream_initialised = 1;
@@ -965,6 +986,11 @@ unzFile file;
 	 * size of both compressed and uncompressed data
 	 */
     }
+	else
+	{
+		printf("inflateInit2 error!!!\n");
+		sleep(3);
+	}
     pfile_in_zip_read_info->rest_read_compressed =
 	s->cur_file_info.compressed_size;
     pfile_in_zip_read_info->rest_read_uncompressed =
@@ -1037,10 +1063,18 @@ unsigned len;
 		      pfile_in_zip_read_info->pos_in_zipfile +
 		      pfile_in_zip_read_info->byte_before_the_zipfile,
 		      SEEK_SET) != 0)
+{
+printf("unzReadCurrentFile fseek\n");
+sleep(3);
 		return UNZ_ERRNO;
+}
 	    if (fread(pfile_in_zip_read_info->read_buffer, uReadThis, 1,
 		      pfile_in_zip_read_info->file) != 1)
+{
+printf("unzReadCurrentFile fread(\n");
+sleep(3);
 		return UNZ_ERRNO;
+}
 	    pfile_in_zip_read_info->pos_in_zipfile += uReadThis;
 
 	    pfile_in_zip_read_info->rest_read_compressed -= uReadThis;
@@ -1103,7 +1137,11 @@ unsigned len;
 	    if (err == Z_STREAM_END)
 		return (iRead == 0) ? UNZ_EOF : iRead;
 	    if (err != Z_OK)
+{
+printf("unzReadCurrentFile if (err != Z_OK)\n");
+sleep(3);
 		break;
+}
 	}
     }
 

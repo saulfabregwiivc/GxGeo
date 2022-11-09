@@ -24,9 +24,14 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/dir.h>
+#include <ogcsys.h>
+
+#include <gccore.h>
+#include <ogc/usbstorage.h>
 #include <fat.h>
 #include <sys/dir.h>
-#include <fat.h>
+//#include <fat.h>
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,10 +48,14 @@
 #include "pbar.h"
 #include "driver.h"
 #include "sound.h"
+#include "wii_vm.h"
+
+#define  DATA_DIRECTORY_USB (char*)"usb:/gxgeo" 
+#define DATA_DIRECTORY_SD (char*)"sd:/gxgeo"
 
 Uint8 *current_buf;
 //extern Uint8 fix_buffer[0x20000];
-char *rom_file;
+extern int usbactive;
 
 void chomp(char *str) {
 	int i=0;
@@ -98,14 +107,17 @@ bool check_dir(char *dir_name)
    DO NOT free it!
 */
 char *get_gngeo_dir(void) {
-    static char *filename=DATA_DIRECTORY"/";
+    //static char *filename=DATA_DIRECTORY"/";
+		static char *filename="/";
+		filename=(usbactive) ? DATA_DIRECTORY_USB"/" : DATA_DIRECTORY_SD"/";
+
     return filename;
 }
 
 void open_nvram(char *name)
 {
     char *filename;
-	char *gngeo_dir=DATA_DIRECTORY"/save/";
+		char *gngeo_dir=(usbactive) ? DATA_DIRECTORY_USB"/save/" : DATA_DIRECTORY_SD"/save/";
 
     FILE *f;
     int len =strlen(name) + strlen(gngeo_dir) + 4; /* ".nv\0" => 4 */
@@ -133,7 +145,7 @@ void open_nvram(char *name)
 /* TODO: multiple memcard */
 void open_memcard(char *name) {
 	char *filename;
-	char *gngeo_dir=DATA_DIRECTORY"/save/";
+	char *gngeo_dir=(usbactive) ? DATA_DIRECTORY_USB"/save/" : DATA_DIRECTORY_SD"/save/";
 
 	FILE *f;
 	int len =strlen("memcard") + strlen(gngeo_dir) + 1; /* ".nv\0" => 4 */
@@ -150,8 +162,9 @@ void open_memcard(char *name) {
 void save_nvram(char *name)
 {
     char *filename;
-	char *gngeo_dir=DATA_DIRECTORY"/save/";
-	
+	char *gngeo_dir=(usbactive) ? DATA_DIRECTORY_USB"/save/" : DATA_DIRECTORY_SD"/save/";
+
+
     FILE *f;
     int len = strlen(name) + strlen(gngeo_dir) + 4; /* ".nv\0" => 4 */
 
@@ -182,7 +195,7 @@ void save_nvram(char *name)
 }
 void save_memcard(char *name) {
 	char *filename;
-	char *gngeo_dir=DATA_DIRECTORY"/save/";
+	char *gngeo_dir=(usbactive) ? DATA_DIRECTORY_USB"/save/" : DATA_DIRECTORY_SD"/save/";
 
     FILE *f;
     int len = strlen("memcard") + strlen(gngeo_dir) + 1; /* ".nv\0" => 4 */
@@ -278,6 +291,47 @@ bool init_game(char *rom_name) {
 		else return false;
 	}
 	#endif
+		/* Check GFX size */
+		int size = 0;
+		int i;
+		for (i=0;i<SEC_MAX;i++)
+		{
+			int s=dr->section[i].size;
+			switch (i) {
+				case SEC_CPU:
+				    break;
+				case SEC_SFIX:
+				    break;
+				case SEC_SM1:
+				    break;
+				case SEC_SOUND1:
+					break;
+				case SEC_SOUND2:
+					break;
+				case SEC_GFX:
+					size += s;
+				    break;
+				default:
+				    break;
+			}
+		}
+		/* For larger games beyond 32MB, use VM for sound if less than 48 MB, else use it partly for Sprite data */
+		if(size > (32*MB) && size <= (48*MB))
+		{
+			usesoundvm = true;
+			usegfxvm = false;
+		}
+		else if(size > (48*MB))
+		{
+			usegfxvm = true;
+			usesoundvm = false;
+		}
+		else
+		{
+			usegfxvm = false;
+			usesoundvm = false;
+		}
+
     //open_rom(rom_name);
     if (dr_load_game(dr,rom_name)==false) {
 		printf("Can't load %s\n",rom_name);

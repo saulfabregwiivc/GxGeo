@@ -117,8 +117,90 @@ void convert_tile(int tileno)
     unsigned int pen,filed;
     TRANS_PACK *t;
 
+
+		if(usegfxvm && !create_cache)
+		{
+			memory.pen_usage[tileno]=TILE_NORMAL;
+		}
+		else
+		{
+			if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
+			else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+		
+			memory.pen_usage[tileno] = 0;
+
+		  memcpy(swap,gfxdata,128);
+
+		  filed=1;
+
+		  for (y = 0;y < 16;y++) {
+		      unsigned int dw;
+		  
+		      dw = 0;
+		      for (x = 0;x < 8;x++)
+		      {
+		          pen  = ((swap[64 + (y<<2) + 3] >> x) & 1) << 3;
+		          pen |= ((swap[64 + (y<<2) + 1] >> x) & 1) << 2;
+		          pen |= ((swap[64 + (y<<2) + 2] >> x) & 1) << 1;
+		          pen |=  (swap[64 + (y<<2)    ] >> x) & 1;
+				if (!pen) filed=0;
+		          dw |= pen << ((7-x)<<2);
+		          memory.pen_usage[tileno]  |= (1 << pen);
+		      }
+
+			/*if (memory.gfx)*/ *(gfxdata++) = dw;
+		   
+		      dw = 0;
+		      for (x = 0;x < 8;x++)
+		      {
+		          pen  = ((swap[(y<<2) + 3] >> x) & 1) << 3;
+		          pen |= ((swap[(y<<2) + 1] >> x) & 1) << 2;
+		          pen |= ((swap[(y<<2) + 2] >> x) & 1) << 1;
+		          pen |=  (swap[(y<<2)    ] >> x) & 1;
+				if (!pen) filed=0;
+		          dw |= pen << ((7-x)<<2);
+		          memory.pen_usage[tileno]  |= (1 << pen);
+		      }
+
+			/*if (memory.gfx)*/ *(gfxdata++) = dw;
+		  }
+
+		  /* TODO: CHECK if it is really faster...
+		    if (filed==1) {
+		    memory.pen_usage[tileno]=TILE_FULL;
+		    } else 
+		  */
+
+		  if ((memory.pen_usage[tileno] & ~1) == 0) {
+		      memory.pen_usage[tileno]=TILE_INVISIBLE;
+		  } else {
+			t=trans_pack_find(tileno);
+			if (t!=NULL) {
+				if (t->type==1)
+					memory.pen_usage[tileno]=TILE_TRANSPARENT25;
+				else {
+					if (t->type==2)
+						memory.pen_usage[tileno]=TILE_TRANSPARENT50;
+					else
+						memory.pen_usage[tileno]=TILE_NORMAL;
+				}
+			} else {
+				memory.pen_usage[tileno]=TILE_NORMAL;
+			}
+		  }
+	}
+}
+
+void convert_tileMem2(int tileno)
+{
+    unsigned char swap[128];
+    unsigned int *gfxdata;
+    int x,y;
+    unsigned int pen,filed;
+    TRANS_PACK *t;
+
 	if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
-	else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+	else gfxdata = (unsigned int *)&bufmem2[ tileno << 7 ];
   
     memory.pen_usage[tileno] = 0;
   
@@ -178,7 +260,6 @@ void convert_tile(int tileno)
 			memory.pen_usage[tileno]=TILE_NORMAL;
 		}
     }
-  
 }
 
 void convert_all_char(Uint8 *Ptr, int size, Uint8 *usage_ptr)
@@ -315,12 +396,29 @@ static __inline__ void draw_tile_full(unsigned int tileno,int sx,int sy,int zx,i
     int buf_w=(buffer.pitch>>1)-zx;
     int buf_w_yflip=(buffer.pitch>>1)+zx;
 #endif
+
+    int file_offset = tileno;
     tileno=tileno%memory.nb_of_tiles;
    
     //gfxdata = (unsigned int *)&memory.gfx[ tileno<<7];
 
-	if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
-	else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+		if(usegfxvm)
+		{
+			if (file_offset < 0x40000)
+				gfxdata = (unsigned int *)&bufmem2[ tileno << 7 ];
+			else
+			{
+				if(create_cache)
+				 	gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+				else
+					gfxdata = (unsigned int *)&memory.gfx[ (tileno - 0x40000) << 7];
+			}
+		}
+		else
+		{
+			if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
+			else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+		}
 	
     /* y zoom table */
     if(zy==16)

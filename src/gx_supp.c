@@ -28,6 +28,7 @@
 #include <malloc.h>
 
 #include "video.h"
+#include "conf.h"
 
 #define DEFAULT_FIFO_SIZE (256 * 1024)
 
@@ -117,6 +118,15 @@ static void draw_init(void) {
 
 	GX_InitTexObj(&texobj, texturemem, vwidth, vheight, GX_TF_RGB565,
 					GX_CLAMP, GX_CLAMP, GX_FALSE);
+// FIXME : Disable bilinear filter, should be an option.
+  if (CF_BOOL(cf_get_item_by_name("bilinear")))
+	{
+  	GX_InitTexObjLOD(&texobj,GX_LINEAR,GX_LIN_MIP_LIN,0.0,10.0,0.0,GX_FALSE,GX_TRUE,GX_ANISO_4);
+	}
+	else
+	{
+		GX_InitTexObjLOD(&texobj,GX_NEAR,GX_NEAR_MIP_NEAR,0.0,10.0,0.0,GX_FALSE,GX_FALSE,GX_ANISO_1);
+	}
 }
 
 static void draw_vert(u8 pos, u8 c, f32 s, f32 t) {

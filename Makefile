@@ -20,7 +20,7 @@ include $(DEVKITPPC)/wii_rules
 # SOURCES is a list of directories containing source code
 # INCLUDES is a list of directories containing extra header files
 #----------------------------------------------------------------------------
-TARGET		:=	$(notdir $(CURDIR))
+TARGET		:=	boot
 BUILD		:=	build
 SOURCES		:=	src/generator68k \
 							src/mamez80 \
@@ -35,18 +35,19 @@ INCLUDES	:=
 # options for code generation
 #----------------------------------------------------------------------------
 
-CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) \
+CFLAGS	= -g -O2 -flto -mrvl -Wno-unused-variable $(MACHDEP) $(INCLUDE) \
 				-DWII -DGFX_MAN -DVERSION="\"1.0b-WII\"" \
-				-DDATA_DIRECTORY="\"sd:/gxgeo\"" \
 				-DWORDS_BIGENDIAN
 CXXFLAGS	=	$(CFLAGS)
 
-LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
+#LDFLAGS	=	-O2 -flto $(MACHDEP) -mrvl -Wl,-Map,$(notdir $@).map,-wrap
+LDFLAGS	=	-O2 $(MACHDEP) -mrvl -Wl,-Map,$(notdir $@).map,-wrap
 
 #----------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #----------------------------------------------------------------------------
-LIBS	:=	-ldb -lz -lfat -lwiiuse -lbte -logc -lm 
+#LIBS	:=	-ldi -liso9660 -lfat -ldb -lz -lwiiuse -lbte -logc -lm
+LIBS	:=	-ldi -lfat -lasnd -lwiiuse -lbte -logc -lm -lz
 
 #----------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level
@@ -98,21 +99,21 @@ export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
 export INCLUDE	:=	$(foreach dir,$(INCLUDES), -iquote $(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 					-I$(CURDIR)/$(BUILD) \
-					-I$(LIBOGC_INC)
+					-I$(LIBOGC_INC) -I$(DEVKITPRO)/libogc/include -I$(DEVKITPRO)/libogc/include/ogc/machine
 
 #----------------------------------------------------------------------------
 # build a list of library paths
 #----------------------------------------------------------------------------
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
-					-L$(LIBOGC_LIB)
+					-L$(LIBOGC_LIB) -L$(DEVKITPRO)/libogc/lib/wii
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 .PHONY: $(BUILD) clean
 
 #----------------------------------------------------------------------------
 $(BUILD):
-	@[ -d $@ ] || mkdir -p $@
-	@make --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+	[ -d $@ ] || mkdir -p $@
+	make --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile -j3
 
 #----------------------------------------------------------------------------
 clean:
@@ -147,6 +148,10 @@ $(OUTPUT).elf: $(OFILES)
 #----------------------------------------------------------------------------
 	@echo $(notdir $<)
 	$(bin2o)
+
+%.o: %.S
+	@echo "$<"
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 -include $(DEPENDS)
 

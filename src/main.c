@@ -21,9 +21,19 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/dir.h>
-#include <fat.h>
-#include <wiiuse/wpad.h>
+#include <ogcsys.h>
 #include <gccore.h>
+#include <wiiuse/wpad.h>
+#include <fat.h>
+#include <sys/iosupport.h>
+#include <fcntl.h>
+#include "sys/dir.h"
+#include <sys/statvfs.h>
+#include "unistd.h"
+
+#ifdef HW_RVL
+#include <di/di.h>
+#endif
 
 #include "controls.h"
 #include "streams.h"
@@ -43,6 +53,11 @@
 #include "pbar.h"
 #include "gx_supp.h"
 
+#define DATA_DIRECTORY_USB (char*)"usb:/gxgeo" 
+#define DATA_DIRECTORY_SD (char*)"sd:/gxgeo"
+
+int usbactive=0;
+//
 extern GXRModeObj *vmode;
 extern u32 *xfb[2];
 static LIST *pdriver_list        = NULL;
@@ -50,6 +65,9 @@ static LIST *pdriver_path_list    = NULL;
 extern Uint8 *joy_touse[4];
 
 extern int player_channel[2];
+
+bool usbismount = false;
+
 
 void calculate_hotkey_bitmasks()
 {
@@ -104,37 +122,60 @@ void init_rest(void)
     */
 }
 
+
+typedef struct _txtNames {
+	char name[256];
+} txtNames;
+
+int compare (const void * a, const void * b ) {
+  return strcmp((*(txtNames*)a).name, (*(txtNames*)b).name);
+}
+
 void load_driver_list(char *dirname)
 {
-    DIR_ITER *dir;
-    struct stat st;
+    //DIR_ITER *dir;
+    DIR *dir;
+		int count = 0;
+    //struct stat st;
+		struct dirent *st;
     char *filename = alloca(MAXPATHLEN+1);
     char *path = alloca(MAXPATHLEN+1);
     char *t;
     int dirc = 0,
     dirca = 0;
     DRIVER *dr;
-    if (!(dir=diropen (dirname)))
+
+    if (!(dir=opendir (dirname)))
     {
         printf("Couldn't open dir %s\n",dirname);
         return;
     }
-    while (dirnext(dir, filename, &st) == 0)
+
+    /*while (dirnext(dir, filename, &st) == 0)
     {
         if (!(st.st_mode & S_IFDIR))
         {
             dirc++;
         }
-    }
-    dirreset(dir);
-    create_progress_bar("Load ROMSETs");
-    while (dirnext(dir, filename, &st) == 0) {
-        // Is regular file
-        if (!(st.st_mode & S_IFDIR)) {
-            t = strrchr(filename,'.');
+    }*/
+
+   // dirreset(dir);
+    //create_progress_bar("Load ROMSETs");
+
+#if 0
+st = readdir(dir);
+while (st != NULL)
+{
+	/* Only get subdirectories */
+	//if (st->d_type == S_IFREG)
+	//{
+	//direntries[count++] = strdup(filestat->d_name);
+	//if ( count == MAXDIRENTRIES ) break;
+			filename=strdup(st->d_name);
+			printf("FILE: %s\n",filename);
+           t = strrchr(filename,'.');
             if (t && !strcasecmp(t,".zip")) {
                 sprintf(path,"%s/%s",dirname,filename);
-                //printf("Loading driver for: %s\n",path);
                 dr = get_driver_for_zip(path);
                 if (dr) { 
                     pdriver_list=list_append(pdriver_list,dr);
@@ -142,10 +183,75 @@ void load_driver_list(char *dirname)
                 }
                 update_progress_bar(dirca++,dirc);
             }
-        }
-    }
+
+		//}
+
+	st = readdir(dir);
+
+}
+#endif
+
+#if 0
+st = readdir(dir);
+while (st != NULL)
+{
+	/* Only get subdirectories */
+	//if (st->d_type == S_IFREG)
+	//{
+	//direntries[count++] = strdup(filestat->d_name);
+	//if ( count == MAXDIRENTRIES ) break;
+filename=strdup(st->d_name);
+printf("FILE: %s\n",filename);
+           t = strrchr(filename,'.');
+            if (t && !strcasecmp(t,".zip")) {
+                sprintf(path,"%s/%s",dirname,filename);
+                dr = get_driver_for_zip(path);
+                if (dr) { 
+                    pdriver_list=list_append(pdriver_list,dr);
+                    pdriver_path_list=list_append(pdriver_path_list,strdup(filename));                    
+                }
+                update_progress_bar(dirca++,dirc);
+            }
+
+		//}
+
+	st = readdir(dir);
+}
+#endif
+
+	struct dirent *entry;
+
+		while((entry=readdir(dir))!=NULL)
+		{
+			if(strstr(entry->d_name,".zip") != NULL)
+				count++;
+		}
+		closedir(dir);
+
+		dir = opendir(dirname);
+		int i = 0;
+
+    create_progress_bar("Load ROMSETs");
+		while((entry=readdir(dir))!=NULL)
+		{
+      /*t = strrchr(entry->d_name,'.');
+      if (t && !strcasecmp(t,".zip"))*/
+			if(strstr(entry->d_name,".zip") != NULL)
+			{
+				sprintf(path,"%s/%s",dirname,entry->d_name);
+				dr = get_driver_for_zip(path);
+				if (dr)
+				{ 
+					pdriver_list=list_append(pdriver_list,dr);
+					pdriver_path_list=list_append(pdriver_path_list,strdup(entry->d_name));                    
+				}
+				update_progress_bar(i++, count);
+				i++;
+			}
+		}
+
     terminate_progress_bar();
-    dirclose(dir);
+    closedir(dir);
 }
 
 DRIVER *list_rom_loop(char **romname)
@@ -195,6 +301,7 @@ DRIVER *list_rom_loop(char **romname)
         {
             jbuttons[0][i] |= jbuttons[1][i];
         }
+ 
         if (jbuttons[0][BUTTON_DOWN]) 
         {
             if (start++ >= count-1)
@@ -254,6 +361,83 @@ void return_to_wii_menu(void)
     if (!*((u32*)0x80001800)) SYS_ResetSystem(SYS_RETURNTOMENU,0,0);
 }
 
+
+
+
+/****************************************************************************
+* IOS Check
+***************************************************************************/
+#ifdef HW_RVL
+bool SupportedIOS(u32 ios)
+{
+if(ios == 58 || ios == 61)
+return true;
+
+return false;
+}
+
+bool SaneIOS(u32 ios)
+{
+bool res = false;
+u32 num_titles=0;
+u32 tmd_size;
+
+if(ios > 200)
+return false;
+
+if (ES_GetNumTitles(&num_titles) < 0)
+return false;
+
+if(num_titles < 1)
+return false;
+
+u64 *titles = (u64 *)memalign(32, num_titles * sizeof(u64) + 32);
+
+if(!titles)
+return false;
+
+if (ES_GetTitles(titles, num_titles) < 0)
+{
+free(titles);
+return false;
+}
+
+u32 *tmdbuffer = (u32 *)memalign(32, MAX_SIGNED_TMD_SIZE);
+
+if(!tmdbuffer)
+{
+free(titles);
+return false;
+}
+
+u32 n;
+for(n=0; n < num_titles; n++)
+{
+if((titles[n] & 0xFFFFFFFF) != ios)
+continue;
+
+if (ES_GetStoredTMDSize(titles[n], &tmd_size) < 0)
+break;
+
+if (tmd_size > 4096)
+break;
+
+if (ES_GetStoredTMD(titles[n], (signed_blob *)tmdbuffer, tmd_size) < 0)
+break;
+
+if (tmdbuffer[1] || tmdbuffer[2])
+{
+res = true;
+break;
+}
+}
+free(tmdbuffer);
+free(titles);
+return res;
+}
+#endif
+
+
 int main(int argc, char **argv)
 {
     char *rom_name = NULL;
@@ -265,20 +449,61 @@ int main(int argc, char **argv)
     char *system;
     u32 type;
     u32 pad_probe;
-    
+ 
     /* loop vars */
     u8 player_i = 0;
     u8 gc_i = 0;
     u8 gc_it = 0;
     u8 found_pad = 0;
-      
-    /* must be the first thing to do */
-    fatInitDefault();    
+		u32 pressed;
+		u32 pressedGC;
+		int Current_IOS;
+	#ifdef HW_RVL
+		L2Enhance();
+
+		if(IOS_GetVersion() != 58)
+			IOS_ReloadIOS(58);
+
+	//IOS_ReloadIOS(202);
+	#endif
+
+		Current_IOS = IOS_GetVersion();
 
     screen_init(); /* Setup GX and enable the console. */
     
     init_input();
-   
+
+		fatInitDefault();
+
+	#define gotoXY(x,y) printf("\x1b[%i;%iH", x, y)
+
+		while(1)
+		{
+			PAD_ScanPads();
+			WPAD_ScanPads();
+			gotoXY(2, 2);
+			printf("Select games folder                                     Cios %d\n\n", Current_IOS);
+			printf("Wiimote 1/GC pad A: SD       Wiimote 2/GC pad B: USB\n");
+			pressed = WPAD_ButtonsDown(WPAD_CHAN_0);
+			pressedGC = PAD_ButtonsDown(0);
+	 
+			if (pressed & WPAD_BUTTON_1 || pressedGC & PAD_BUTTON_A)
+			{ 
+				usbactive = 0;
+				//printf("\n\nOpening sd:/gxgeo/roms ...\n");
+				//sleep(1);
+				break;		
+			}
+			else if(pressed & WPAD_BUTTON_2 || pressedGC & PAD_BUTTON_B)
+			{ 
+				usbactive = 1;
+				//printf("\n\nOpening usb:/gxgeo/roms ...\n");
+				//sleep(1);
+				break;		
+			}
+
+		}
+
     cf_init();     
     cf_open_file(NULL);
     cf_init_cmd_line();
@@ -289,8 +514,8 @@ int main(int argc, char **argv)
     
     player_channel[0] = CF_VAL(cf_get_item_by_name("player1"));
     player_channel[1] = CF_VAL(cf_get_item_by_name("player2"));
-    
-    
+
+
     /* auto mode */
     if (player_channel[0] == -1 && player_channel[1] == -1)
     {
@@ -339,16 +564,19 @@ int main(int argc, char **argv)
     */
     
     bool passed = false;
-    
+
     /* load all the drivers */
-    dr_load_driver_dir(DATA_DIRECTORY"/romrc");
+		//dr_load_driver_dir(DATA_DIRECTORY"/romrc");
+		dr_load_driver_dir((usbactive) ? DATA_DIRECTORY_USB"/romrc" : DATA_DIRECTORY_SD"/romrc");
+
     if (argc > 1)
     {
         rom_name = argv[1];
         
         /* load driver for rom */
         dr = dr_get_by_name(rom_name);
-        gpath = DATA_DIRECTORY"/conf/";
+        //gpath = DATA_DIRECTORY"/conf/";
+				gpath = (usbactive) ? DATA_DIRECTORY_USB"/conf/" : DATA_DIRECTORY_SD"/conf/";
         drconf = alloca(strlen(gpath)+strlen(dr->name)+strlen(".cf")+1);
         sprintf(drconf, "%s%s.cf", gpath, dr->name);
         cf_open_file(drconf);
@@ -365,19 +593,22 @@ int main(int argc, char **argv)
     bool rom_list_loaded = false;
     if (!passed)
     {
-        load_driver_list(DATA_DIRECTORY"/roms");
+        //load_driver_list(DATA_DIRECTORY"/roms");
+				load_driver_list((usbactive) ? DATA_DIRECTORY_USB"/roms" : DATA_DIRECTORY_SD"/roms");
         rom_list_loaded = true;
     }
     
     for (;;)
     {
         screen_restart();
+
         while(!passed)
         {
             if (!rom_list_loaded)
             {
                 printf ("\x1b[%d;%dH", 4, 0);
-                load_driver_list(DATA_DIRECTORY"/roms");
+                //load_driver_list(DATA_DIRECTORY"/roms");
+								load_driver_list((usbactive) ? DATA_DIRECTORY_USB"/roms" : DATA_DIRECTORY_SD"/roms");
                 rom_list_loaded = true;
             }
             /* draw the rom list */
@@ -386,7 +617,8 @@ int main(int argc, char **argv)
             printf ("\x1b[%d;%dH", 4, 0);
             
             /* try and open a config file <romname>.cf in the conf folder */
-            gpath = DATA_DIRECTORY"/conf/";
+            //gpath = DATA_DIRECTORY"/conf/";
+						gpath = (usbactive) ? DATA_DIRECTORY_USB"/conf/" : DATA_DIRECTORY_SD"/conf/";
             drconf = alloca(strlen(gpath)+strlen(dr->name)+strlen(".cf")+1);
             sprintf(drconf, "%s%s.cf", gpath, dr->name);
             cf_open_file(drconf);
@@ -418,6 +650,9 @@ int main(int argc, char **argv)
         save_memcard(conf.game);
         passed = false;
     }
-
+ #ifdef GEKKO
+        DeInitUSB();
+        fatUnmount(0);
+        #endif
     return 0;
 }

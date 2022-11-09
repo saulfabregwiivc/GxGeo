@@ -19,6 +19,8 @@
 #ifndef _MEMORY_H_
 #define _MEMORY_H_
 
+#include <stdio.h>
+
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -94,6 +96,13 @@ typedef struct neo_mem {
 } neo_mem;
 
 neo_mem memory;
+//
+Uint8 *bufmem2;
+FILE *cachefile;
+bool create_cache;
+bool usegfxvm;
+bool usesoundvm;
+//
 
 /* video related */
 extern int irq2enable, irq2start, irq2repeat, irq2control;

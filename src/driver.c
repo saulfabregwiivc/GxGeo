@@ -39,8 +39,18 @@
 #include "neocrypt.h"
 #include "wiialloc.h"
 #include "gfx_man.h"
+#include "wii_vm.h"
+
+#define  DATA_DIRECTORY_USB (char*)"usb:/gxgeo" 
+#define DATA_DIRECTORY_SD (char*)"sd:/gxgeo"
+
+char cachename[1024];
+
+void free_game_memory(void);
+/////////////
 
 extern int neogeo_fix_bank_type;
+extern int usbactive;
 
 static LIST *driver_list=NULL;
 
@@ -110,11 +120,13 @@ static void add_driver_section(Uint32 s, SECTION *sec,FILE *f) {
 static void add_driver(FILE *f,char *fullname)
 {
 	DRIVER *dr;
-    char buf[512], a[64], b[64];
-    Uint32 s, size, offset;
+    //char buf[512], a[64], b[64];
+		char buf[512], a[64];
+		Uint32 s;
+    //Uint32 size, offset;
     int sec;
     char game[12], type[10];
-    char *t;
+    //char *t;
 
     dr = calloc(1, sizeof(DRIVER)); CHECK_ALLOC(dr);
 
@@ -208,7 +220,7 @@ static void print_driver(void *data) {
     }
 }
 /* Using sys/dir.h */
-bool dr_load_driver_dir(char *dirname) {
+/*bool dr_load_driver_dir(char *dirname) {
 	DIR_ITER *dir;
 	struct stat st;
 	int dirc = 0,
@@ -225,7 +237,6 @@ bool dr_load_driver_dir(char *dirname) {
 	dirreset(dir);
 	create_progress_bar("Load Drivers");
 	while (dirnext(dir, filename, &st) == 0) {
-		// Is regular file
 		if (!(st.st_mode & S_IFDIR)) {
 			sprintf(path,"%s/%s",dirname,filename);
 			dr_load_driver(path);
@@ -235,13 +246,46 @@ bool dr_load_driver_dir(char *dirname) {
 	terminate_progress_bar();
 	dirclose(dir);
 	return true;
-}
+}*/
 
+bool dr_load_driver_dir(char *dirname) {
+    DIR *pdir;
+		int dirc = 0,
+		dirca = 0;
+
+    struct stat buf;
+    struct dirent *pfile;
+    if (!(pdir=opendir (dirname))) {
+	     printf("Couldn't find %s\n",dirname);
+       
+    }
+
+    while((pfile = readdir(pdir))) {
+			dirc++;
+		}
+		closedir(pdir);
+
+		pdir = opendir(dirname);
+
+		create_progress_bar("Load Drivers");
+    while((pfile = readdir(pdir))) {
+        char *filename=alloca(strlen(pfile->d_name)+strlen(dirname)+2);
+        sprintf(filename,"%s/%s",dirname,pfile->d_name);
+        stat(filename,&buf);
+        if (S_ISREG(buf.st_mode)) {
+            dr_load_driver(filename);
+			update_progress_bar(dirca++,dirc);
+        }
+    }
+	terminate_progress_bar();
+  closedir(pdir);
+	return true;
+}
 
 /* load the specified file, and create the driver struct */
 bool dr_load_driver(char *filename) {
     FILE *f;
-    LIST *i;
+    //LIST *i;
     char buf[512],*fullname;
 
     f=fopen(filename,"r");
@@ -336,8 +380,9 @@ DRIVER *get_driver_for_zip(char *zip) {
     int i;
     char zfilename[256];
     char *t;
-    LIST *zip_list=NULL,*l,*zl;
-    int res;
+    /*LIST *zip_list=NULL,*l,*zl;
+    int res;*/
+		LIST *zip_list=NULL,*l;
 
     /* first, we check if it a zip */
     gz = unzOpen(zip);
@@ -395,7 +440,7 @@ static int zfread(unzFile * f, void *buffer, int length)
 {
     Uint8 *buf = (Uint8*)buffer;
     Uint8 *tempbuf;
-    Uint32 totread, r, i;
+		Uint32 totread, r;
     int totlength=length;
     totread = 0;
     tempbuf=alloca(4097);
@@ -419,6 +464,7 @@ static int zfread(unzFile * f, void *buffer, int length)
     }
 
     terminate_progress_bar();
+
     return totread;
 }
 
@@ -475,6 +521,54 @@ static int zfread_alternate(unzFile * f, void *buffer, int length, int inc)
     return true;
   }
 
+  bool dr_load_sectiongfx(unzFile *gz, SECTION s, Uint8 *bufmem2, Uint8 *bufvm) {
+    LIST *l;
+		int i=0;
+		int nb_item = list_nb_item(s.item);
+    for(l=s.item;l;l=l->next) {
+      SECTION_ITEM *item=l->data;
+			/* Load half of files in RAM */
+			if(i < (nb_item /2))
+			{
+				if (strcmp(item->filename,"-")!=0)
+				{
+				  if ((unzLocateFile(gz, item->filename, 2) == UNZ_END_OF_LIST_OF_FILE) || (unzOpenCurrentFile(gz) != UNZ_OK))
+				  {
+				    unzClose(gz);
+				    return false;
+				  }
+				}
+				create_progress_bar(item->filename);
+				if (item->type==LD_ALTERNATE) {zfread_alternate(gz, bufmem2 + item->begin, item->size, 2);}
+				else {zfread(gz, bufmem2 + item->begin, item->size);}
+			}
+			else
+			{
+				/* Load the remaining GFX files in VM during cache creation. */
+				if(create_cache)
+				{
+						if (strcmp(item->filename,"-")!=0)
+						{
+						  if ((unzLocateFile(gz, item->filename, 2) == UNZ_END_OF_LIST_OF_FILE) || (unzOpenCurrentFile(gz) != UNZ_OK))
+						  {
+						    unzClose(gz);
+						    return false;
+						  }
+						}
+						create_progress_bar(item->filename);
+
+						if (item->type==LD_ALTERNATE) {zfread_alternate(gz, bufvm + item->begin, item->size, 2);}
+						else {zfread(gz, bufvm + item->begin, item->size);}
+				}
+				else
+				{
+					return true;
+				}				
+			}
+			i++;
+    }
+    return true;
+  }
 void set_bankswitchers(BANKSW_TYPE bt) {
     switch(bt) {
       case BANKSW_NORMAL:
@@ -496,10 +590,51 @@ void set_bankswitchers(BANKSW_TYPE bt) {
     }
 }
 
+/*-----------------------------------------------------------------------*/
+/**
+ * Return TRUE if file exists, is readable or writable at least and is not
+ * a directory.
+ */
+bool File_Exists(const char *filename)
+{
+	struct stat buf;
+	if (stat(filename, &buf) == 0 &&
+	    (buf.st_mode & (S_IRUSR|S_IWUSR)) && !S_ISDIR(buf.st_mode))
+	{
+		/* file points to user readable regular file */
+		return true;
+	}
+	return false;
+}
+
+bool make_cache(const char *filename)
+{
+	struct stat st;
+//	char cachename[256];
+
+	sprintf(cachename, "usb:/gxgeo/roms/%s.gfx", filename);
+
+	//if (File_Exists(cachename))
+	if(stat(cachename,&st) == 0)
+	{
+		return false;
+	}
+	else
+	{
+		sprintf(cachename, "sd:/gxgeo/roms/%s.gfx", filename);
+
+		//if (File_Exists(cachename))
+		if(stat(cachename,&st) == 0)
+			return false;
+		else
+			return true;
+	}
+}
+
 bool dr_load_game(DRIVER *dr,char *name) {
     unzFile *gz;
     int i;
-    LIST *l;
+    //LIST *l;
     char *zip=get_zip_name(name);
     gz = unzOpen(zip);
     free(zip);
@@ -518,7 +653,23 @@ bool dr_load_game(DRIVER *dr,char *name) {
 		drl = drl->next;
 	}
 	*/
-	
+
+	if(bufmem2)
+	{
+		fclose(cachefile);
+		free2(bufmem2);
+		bufmem2 = NULL;
+		memory.gfx = NULL;
+		VM_InvalidateAll();
+		VM_Deinit();
+	}
+
+	int vmsize = 0;
+	create_cache = false;
+
+	create_cache = make_cache(dr->name);
+
+
     if (dr->special_bios) {
 	    memory.bios=malloc(dr->bios.size); CHECK_ALLOC(memory.bios);
       memory.bios_size=dr->bios.size;
@@ -528,9 +679,10 @@ bool dr_load_game(DRIVER *dr,char *name) {
     for (i=0;i<SEC_MAX;i++) {
 		int s=dr->section[i].size;
 		Uint8 *current_buf=NULL;
-		//if (dr->section[i].item==NULL) continue;
+
 		if (s==0) continue;
 		//      printf("%p %d \n",dr->section[i].item,i);
+
 		switch (i) {
 			case SEC_CPU:
 				memory.cpu = malloc(s); 
@@ -553,8 +705,11 @@ bool dr_load_game(DRIVER *dr,char *name) {
 			    memory.sm1_size = s;
 			    break;
 			case SEC_SOUND1:
-		        if (conf.sound) {
-					memory.sound1 = malloc2(s);
+				if (conf.sound) {
+						if(usesoundvm)
+							memory.sound1 =  VM_Init(s, ROMCACHE_SIZE);
+						else
+							memory.sound1 = malloc2(s);
 					if (!memory.sound1) { return false; }
 					memory.sound1_size = s;
 					current_buf = memory.sound1;
@@ -567,20 +722,39 @@ bool dr_load_game(DRIVER *dr,char *name) {
 	  				memory.sound2_size = s;
 	  				current_buf = memory.sound2;
 				}
-				break; 
+				break;
 			case SEC_GFX:
-				memory.gfx = malloc2(s); 
+
+				if(usegfxvm)
+				{
+					bufmem2 = malloc2(s/2);
+					vmsize = s - 32*MB;
+
+					if(create_cache)
+						memory.gfx =  VM_Init(s, ROMCACHE_SIZE);
+					else
+						memory.gfx =  VM_Init(vmsize, ROMCACHE_SIZE);
+				}
+				else
+				{
+					memory.gfx = malloc2(s); 
+				}
 				/* don't need to check if the memory was available yet */
 				#ifndef GFX_MAN 
 				if (!memory.gfx) { free_game_memory(); return false; }
 				#endif
 				memory.gfx_size = s;
-				current_buf = memory.gfx;
+
+				if(usegfxvm)
+					current_buf = bufmem2;
+				else
+					current_buf = memory.gfx;
+
 				memory.pen_usage = malloc((s >> 7) * sizeof(int));
+
 				if (!memory.pen_usage) { free_game_memory(); return false; }
 				memset(memory.pen_usage, 0, (s >> 7) * sizeof(int));
 				memory.nb_of_tiles = s >> 7;
-				//sleep(5);
 			    break;
 			    /* TODO: Crypted rom */
 			default:
@@ -588,7 +762,22 @@ bool dr_load_game(DRIVER *dr,char *name) {
 		}
 		/* if the GFX data space could not be allocated then the GFX section won't be loaded from the romset */
 		if (current_buf) {
-			if (!dr_load_section(gz,dr->section[i],current_buf)) return false;
+			if(usegfxvm)
+			{
+				if(bufmem2)
+				{
+					/* Load GFX files in RAM or VM */
+					if (!dr_load_sectiongfx(gz,dr->section[i], bufmem2, memory.gfx)) return false;
+				}
+				else
+				{
+					if (!dr_load_section(gz,dr->section[i],current_buf)) return false;
+				}
+			}
+			else
+			{
+				if (!dr_load_section(gz,dr->section[i],current_buf)) return false;
+			}
 		}
     }
 
@@ -596,11 +785,13 @@ bool dr_load_game(DRIVER *dr,char *name) {
 	
 	/* If there was not space enough for the GFX ROMs */
 	if (!memory.gfx) {
-	#ifdef GFX_MAN 
+	#ifdef GFX_MAN
+		printf("Not enough RAM for the GFX\nexiting..\n");
+		sleep(5);
 		char dump_name[512];
 	    //Uint32 *pusage;
 		//printf("\n\t\tNot enough room for GFX ROMs, time for BLIZZO-POWER!\n");
-	    sprintf(dump_name,"%s/%s.gfx",DATA_DIRECTORY"/roms",dr->name);
+	    sprintf(dump_name,"%s/%s.gfx",(usbactive) ? DATA_DIRECTORY_USB:DATA_DIRECTORY_SD"/roms",dr->name);
 		/* load the dump, if it cannot be loaded the function returns false */
 		if ( init_gfx_manager(dump_name, memory.gfx_size) ) {
       if (read_pen_usage(memory.pen_usage))
@@ -654,17 +845,51 @@ bool dr_load_game(DRIVER *dr,char *name) {
 	    terminate_progress_bar();
 	}
 	
-    convert_all_char(memory.sfix_game, memory.sfix_size, memory.fix_game_usage);
+
+		if(usegfxvm && !create_cache)
+		{
+			cachefile = fopen(cachename, "rb");
+			printf("Reading Cache...\n");
+			fread( memory.gfx, vmsize, 1, cachefile);
+		}
+
+   convert_all_char(memory.sfix_game, memory.sfix_size, memory.fix_game_usage);
 	
 	/* mapped tiles are already converted */
 	if (!memory.mapped) {
 		create_progress_bar("Convert tile");
-		for (i = 0; i < memory.nb_of_tiles; i++) {
-			convert_tile(i);
-			if (i%100==0) update_progress_bar(i,memory.nb_of_tiles);
+
+		if(usegfxvm)
+		{
+			// Convert the first 32bits/0x40000 tiles
+			for (i = 0; i < 0x40000; i++) {
+				convert_tileMem2(i);
+				if (i%100==0) update_progress_bar(i,memory.nb_of_tiles);
+			}
+			// Convert the remaining tiles
+			for (i = 0x40000; i < memory.nb_of_tiles; i++) {
+				convert_tile(i);
+				if (i%100==0) update_progress_bar(i,memory.nb_of_tiles);
+			}
+		}
+		else
+		{
+			for (i = 0; i < memory.nb_of_tiles; i++) {
+				convert_tile(i);
+				if (i%100==0) update_progress_bar(i,memory.nb_of_tiles);
+			}
+
 		}
 		terminate_progress_bar();
 	}
+		/* Create a cache file containing the GFX section from 32MB till the end */
+		if(usegfxvm && create_cache)
+		{
+			printf("Creating Cache...\n");
+			cachefile = fopen(cachename, "wb");
+			fwrite(&memory.gfx[0x40000 << 7], vmsize, 1, cachefile);
+			fclose(cachefile);
+		}
 	
     if (memory.sound2 == NULL) {
 		memory.sound2 = memory.sound1;

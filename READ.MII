@@ -1,10 +1,17 @@
 /************************************************************
  * GxGeo                                                    *
- *   by Blizzo                                              *
+ *   by Blizzo, Wiimpathy                                   *
  ************************************************************/
  
 -[ INTRO ]-
 
+  0.6 09/01/2018
+  --------------
+  * Large games support with virtual memory (Thanks to tueidj)
+  * IOS58 by default
+  * Added 'bilinear' option. Use 'bilinear true' in gngeorc.
+  * Minor tweaks. Recompiled with DevkitPPC r26
+  
   Home Page: http://blizzo.co.uk/gxgeo
   Download: http://code.google.com/p/gxgeo/downloads/list
   Source: http://code.google.com/p/gxgeo/source/checkout
@@ -54,6 +61,25 @@
   **Some times the files have different names, so you have to
     rename them to match the names on the left.
 
+    Large games support
+    -------------------
+    
+    For games having GFX files greater than 32 MB, Nand Virtual Memory will be used.
+    It will use up to 64MB Nand space during cache creation.
+    Only decrypted games are supported! Check you have enough Nand space too!!!
+    
+    * games below 48MB GFX :
+    All audio will be copied to VM.
+    
+    * games over 48MB GFX :
+    The first time you start the game, a cache file will be created in /gxgeo/roms.
+    This process takes a long time, between 2 and 4 minutes depending of the game.
+    The second time you launch it, it will read the GAMEID.gfx file and starts a lot 
+    quicker, around 40 seconds.
+    
+    Using Unibios is recommended or else loading times will be longer.
+    Note that when launching two large games in a row, the emulator will crash.
+    
 
 -[ CONTROLS ]-
 

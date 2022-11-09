@@ -39,14 +39,23 @@
 #include "emu.h"
 #include "fileio.h"
 
+#define  DATA_DIRECTORY_USB (char*)"usb:/gxgeo"
+#define DATA_DIRECTORY_SD (char*)"sd:/gxgeo" 
+
 /*
 static CONF_ITEM *cf_hash[128];
 static cf_hash_size[128];
 */
+
+
+
 extern int *joy_wiimote;
 extern int *joy_nunchuk;
 extern int *joy_classic;
 extern int *joy_gcpad; 
+
+extern int usbactive;
+
 
 char *WIIMOTE_BUTTONS[] = { "1", "2", "A", "B", "MINUS", "PLUS", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT"  };
 unsigned int   WIIMOTE_MASK[]    = { WI1, WI2, WIA, WIB, WIMINUS, WIPLUS, WIUP, WIDOWN, WILEFT, WIRIGHT };
@@ -329,15 +338,24 @@ void cf_init(void)
     //cf_create_bool_item("convtile","Convert tile in internal format at loading",'c',true);
     cf_create_bool_item("pal","Use PAL timing (buggy)",'P',false);
     cf_create_bool_item("screen320","Use 320x224 output screen (instead 304x224)",0,false);
+    cf_create_bool_item("bilinear","Use bilinear filter",0,false);
     cf_create_bool_item("bench","Draw x frames, then quit and show average fps",0,false);
     //cf_create_bool_item("returntoloader","Return to loader at exit",0,true);
 
     cf_create_string_item("country","Set the contry to japan, asia, usa or europe",0,"usa");
     cf_create_string_item("system","Set the system to home or arcade",0,"arcade");
-    cf_create_string_item("rompath","Use STRING as rom path",'i',DATA_DIRECTORY"/roms");
-	cf_create_string_item("biospath","Use STRING as bios path",'B',DATA_DIRECTORY"/roms");
+
+    /*cf_create_string_item("rompath","Use STRING as rom path",'i',DATA_DIRECTORY"/roms");
+		cf_create_string_item("biospath","Use STRING as bios path",'B',DATA_DIRECTORY"/roms");
     cf_create_string_item("romrc","Use STRING as romrc file",'d',DATA_DIRECTORY"/romrc");
-    cf_create_string_item("romrcdir","Use STRING as romrc.d directory",0,DATA_DIRECTORY"/romrc.d");
+    cf_create_string_item("romrcdir","Use STRING as romrc.d directory",0,DATA_DIRECTORY"/romrc.d");*/
+
+//
+		cf_create_string_item("rompath","Use STRING as rom path",'i',(usbactive) ? DATA_DIRECTORY_USB"/roms" : DATA_DIRECTORY_SD"/roms");
+		cf_create_string_item("biospath","Use STRING as bios path",'B',(usbactive) ? DATA_DIRECTORY_USB"/roms" : DATA_DIRECTORY_SD"/roms");
+    cf_create_string_item("romrc","Use STRING as romrc file",'d',(usbactive) ? DATA_DIRECTORY_USB"/romrc" : DATA_DIRECTORY_SD"/romrc");
+    cf_create_string_item("romrcdir","Use STRING as romrc.d directory",0,(usbactive) ? DATA_DIRECTORY_USB"/romrc.d" : DATA_DIRECTORY_SD"/romrc.d");
+//
     cf_create_string_item("libglpath","Use STRING as libGL",0,"/usr/lib/libGL.so");
     cf_create_string_item("effect","Use the specified effect (help for a list)",'e',"none");
     cf_create_string_item("blitter","Use the specified blitter (help for a list)",'b',"soft");
@@ -415,9 +433,9 @@ bool cf_save_file(char *filename,int flags) {
 	CONF_ITEM *cf;
 
 	if (!conf_file) {
-		int len = strlen(DATA_DIRECTORY"/conf/gngeorc") + 1; /* "\0" => 1 */
+		int len = strlen((usbactive) ? DATA_DIRECTORY_USB"/conf/gngeorc" : DATA_DIRECTORY_SD"/conf/gngeorc") + 1; /* "\0" => 1 */
 		conf_file = (char *) alloca(len*sizeof(char));
-		sprintf(conf_file, DATA_DIRECTORY"/conf/gngeorc");	    
+		sprintf(conf_file, (usbactive) ? DATA_DIRECTORY_USB"/conf/gngeorc" : DATA_DIRECTORY_SD"/conf/gngeorc");	    
 	}
     conf_file_dst=alloca(strlen(conf_file)+4);
     sprintf(conf_file_dst,"%s.t",conf_file);
@@ -522,7 +540,7 @@ bool cf_open_file(char *filename)
     CONF_ITEM *cf;
 
     if (!conf_file) {
-		conf_file = DATA_DIRECTORY"/conf/gngeorc";
+		conf_file = (usbactive) ? DATA_DIRECTORY_USB"/conf/gngeorc" : DATA_DIRECTORY_SD"/conf/gngeorc";
     }
     if ((f = fopen(conf_file, "rb")) == 0) {
 		// printf("Unable to open %s\n",conf_file);

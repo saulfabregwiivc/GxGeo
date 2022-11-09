@@ -22,12 +22,30 @@ static __inline__ void RENAME(draw)(unsigned int tileno,int sx,int sy,int zx,int
     int buf_w=(buffer.pitch>>1)-zx;
     int buf_w_yflip=(buffer.pitch>>1)+zx;
 #endif
+
+		int file_offset = tileno;
+
     tileno=tileno%memory.nb_of_tiles;
 
     /* use the get tile function which implements file reading */
-	if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
-	else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
-   
+		if(usegfxvm)
+		{
+			if (file_offset < 0x40000)
+				gfxdata = (unsigned int *)&bufmem2[ tileno << 7 ];
+			else
+			{
+				if(create_cache)
+				 	gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+				else
+					gfxdata = (unsigned int *)&memory.gfx[ (tileno - 0x40000) << 7];
+			}
+		}
+		else
+		{
+			if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
+			else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+		}
+	
     //gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
 
     /* y zoom table */
@@ -321,10 +339,26 @@ static inline void RENAME(draw_scanline)(unsigned int tileno,int yoffs,int sx,in
     unsigned char col;
     unsigned short *br;
     unsigned int *paldata=(unsigned int *)&current_pc_pal[16*color];
+		int file_offset = tileno;
 
-	if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
-	else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
-		
+		if(usegfxvm)
+		{
+			if (file_offset < 0x40000)
+				gfxdata = (unsigned int *)&bufmem2[ tileno << 7 ];
+			else
+			{
+				if(create_cache)
+				 	gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+				else
+					gfxdata = (unsigned int *)&memory.gfx[ (tileno - 0x40000) << 7];
+			}
+		}
+		else
+		{
+			if (!memory.gfx) gfxdata = (unsigned int *)get_tile(tileno);
+			else gfxdata = (unsigned int *)&memory.gfx[ tileno << 7 ];
+		}
+	
     gfxdata+=(yoffs<<1);
   
     

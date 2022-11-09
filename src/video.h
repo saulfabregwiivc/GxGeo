@@ -72,6 +72,6 @@ void draw_screen(void);
 void convert_all_char(unsigned char *Ptr, int size, unsigned char *usage_ptr);
 void convert_mgd2_tiles(unsigned char *buf, int len);
 void convert_tile(int tileno);
-
+void convert_tileMem2(int tileno);
 
 #endif

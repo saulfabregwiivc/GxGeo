@@ -137,4 +137,5 @@ int *joy_gcpad;
 
 
 int read_input(Uint8 joy[2][BUTTON_MAX], int held);
+void init_input(void);
 #endif
